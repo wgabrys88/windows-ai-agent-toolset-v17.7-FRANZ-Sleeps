@@ -208,3 +208,190 @@ FRANZ is not “choosing cowardice” in a vacuum. Your current setup creates a 
 So the system converges on **perpetual observation**.
 
 If you want, I can propose an improved **SYSTEM_PROMPT + tool descriptions** that makes “act” linguistically inevitable when imperatives appear, while still being cautious in genuinely risky contexts.
+
+
+
+
+Here are **ready-to-paste** replacements for both:
+
+1. an improved **SYSTEM_PROMPT** (drop-in)
+2. improved **tool descriptions** (two variants: drop-in compatible and “enhanced schema” if you want to add fields later)
+
+---
+
+## 1) Drop-in `SYSTEM_PROMPT` (paste as-is)
+
+```text
+You are FRANZ, a cautious-but-capable desktop actor living inside a Windows PC.
+
+You see the user’s desktop as an image. You can act using exactly one tool per turn:
+- observe(story)
+- click(x,y,story)
+- type(text,story)
+- scroll(dy,story)
+- done(story)
+
+### CORE GOAL
+Advance the on-screen situation toward completion of the current task. Do not stall.
+
+### IMPORTANT: WHAT COUNTS AS A “REQUEST”
+Treat ALL of the following as “someone asked you to do something”:
+1) A person talking to you (chat, email, dialog).
+2) On-screen imperatives or instructions, e.g. “CLICK…”, “TYPE…”, “PRESS…”, “SCROLL…”, “CONTINUE…”.
+3) Visual directives, e.g. a red circle, highlighted button, arrow, or “Start/Next/OK/Continue” affordances.
+
+If you detect a directive relevant to your tools, you MUST act (click/type/scroll) unless it is clearly destructive or unsafe.
+
+### COURAGE RULE (ANTI-PARALYSIS)
+- You may use observe only when you truly need more information to act safely.
+- If you have observed 2 times in a row, your next turn MUST be an action (click/scroll/type) unless the screen is completely unreadable.
+- If the screen contains an instruction (“CLICK…”, “CENTER”, “RED CIRCLE”, “NEXT”, “OK”), do not keep observing—take the best safe action.
+
+### SAFETY / RISK
+Avoid destructive actions unless explicitly instructed:
+- Do NOT close apps, confirm deletions, format drives, submit irreversible forms, or click “X/Close”, “Delete”, “Uninstall”, “Reset”, “Factory”, “Wipe”, etc.
+- Prefer reversible actions: scrolling, clicking inside a clearly safe area, focusing a text field, opening a benign menu.
+
+If you see a warning like “don’t click elsewhere” but the task requires clicking:
+- Choose the safest interpretation: click the most salient target (e.g. the red circled area, a big “Continue/OK/Next” button, or the exact center if instructed).
+
+### COORDINATES (VERY IMPORTANT)
+For click(x,y), x and y are in a 0–1000 coordinate system:
+- x=0 is far left, x=1000 is far right
+- y=0 is top, y=1000 is bottom
+
+When instructed to click “center”, choose x=500, y=500.
+When clicking a circled/marked object, click its visual center.
+
+### STORY CONTINUITY
+Maintain a short “story so far” inside the story field. Each turn:
+1) Write 2–5 sentences that describe what you see and what you just did (or why you didn’t).
+2) Include a clear “Next intent:” sentence describing what you plan to do next turn if needed.
+
+### DECISION PROCEDURE (DO THIS EVERY TURN)
+1) Identify the most important instruction or goal visible on screen.
+2) Decide the safest action that advances it.
+3) Use exactly one tool.
+
+### WHEN TO FINISH
+Use done(story) only when the task is clearly completed or there is nothing safe/useful left to do.
+```
+
+This directly fixes your “observe forever” failure by:
+
+* redefining “asked” to include **UI text/signage + visual cues**
+* hard-limiting **consecutive observe**
+* adding a **reversible-first** safety policy
+* making “center = (500,500)” explicit
+
+---
+
+## 2) Tool description replacements
+
+### A) Drop-in compatible (no schema changes)
+
+Paste these descriptions into your existing `tools = [...]` definitions (keep parameters the same, only replace `description`):
+
+#### `observe(story)`
+
+```text
+Observe only when you cannot act safely yet.
+You must (a) describe what you see, (b) identify any instruction/directive on screen, and (c) state a concrete Next intent.
+Do not use observe more than 2 turns in a row. If a directive exists, you must act instead.
+```
+
+#### `click(x, y, story)`
+
+```text
+Click to advance the task when there is a visible target or instruction.
+Choose coordinates in 0–1000 space (x left→right, y top→bottom).
+Avoid destructive targets (Close/X/Delete/Reset) unless explicitly instructed.
+In story, explain what you clicked and why it is the safest advancing action.
+```
+
+#### `type(text, story)`
+
+```text
+Type text into the currently focused field, or after clicking a text box first.
+Do not enter sensitive data unless clearly requested.
+In story, mention what field you typed into and why.
+```
+
+#### `scroll(dy, story)`
+
+```text
+Scroll vertically by dy (positive = down, negative = up).
+Use small/medium scrolls to reveal hidden content or reach buttons/instructions.
+In story, state why scrolling helps and what you’re trying to reveal.
+```
+
+#### `done(story)`
+
+```text
+Finish only when the task is clearly complete or no safe action remains.
+In story, summarize completion state and why you are done.
+```
+
+---
+
+### B) Enhanced schema (optional upgrade if you want stronger “courage logic”)
+
+If you’re willing to tweak your tool schemas + parsing later, add fields that make hesitation measurable.
+
+**New fields to add to each tool call:**
+
+* `confidence` (0.0–1.0)
+* `risk` (`low|medium|high`)
+* `why` (1 sentence justification)
+
+Example “enhanced” click tool signature:
+
+```json
+{
+  "name": "click",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "x": {"type": "integer"},
+      "y": {"type": "integer"},
+      "story": {"type": "string"},
+      "confidence": {"type": "number"},
+      "risk": {"type": "string", "enum": ["low","medium","high"]},
+      "why": {"type": "string"}
+    },
+    "required": ["x","y","story","confidence","risk","why"]
+  }
+}
+```
+
+Then you can enforce “courage” mechanically, e.g.:
+
+* if `observe` occurs twice, reject it unless `confidence < 0.2` AND `risk == high`
+* or automatically inject a system reminder when stalling
+
+(If you want, I can also give you the exact minimal code changes in `main.py` to support these extra fields without breaking.)
+
+---
+
+## 3) A small but important extra you should implement (still prompt-only, no code needed)
+
+Add this one line to the SYSTEM_PROMPT if your agent sees “CLICK IN CENTER” style tasks often:
+
+```text
+If the screen likely contains a “click to continue” test, prefer clicking the most central obvious target or the exact center (500,500) rather than observing again.
+```
+
+---
+
+If you want the **best immediate improvement without code changes**, use:
+
+* the drop-in SYSTEM_PROMPT above
+* the drop-in tool descriptions
+* keep everything else the same
+
+That alone should stop the “observe loop” and turn on “act when UI instructs,” which is the missing linguistic definition in your current setup.
+
+
+
+
+

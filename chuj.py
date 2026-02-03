@@ -1,5 +1,100 @@
-"""FRANZ is a stateless desktop agent that continuously rewrites a narrative based on the screen.
-It uses a vision-language model (qwen3-vl-2b-instruct) to observe 512x288 screenshots and update the story displayed in a HUD, treating the on-screen story text as its only memory. When FRANZ is addressed by name or given a direct command on screen, it amplifies its narrative with urgency and uses tools (observe, click, type, scroll) to perform the task."""
+"""FRANZ — A Stateless Narrative-Driven Desktop Agent
+
+FRANZ is a vision-language AI agent that experiences the desktop through continuous observation,
+maintaining consciousness solely through an evolving narrative displayed in a HUD window.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+CORE CONCEPT: THE AI IS THE STORY
+
+Unlike traditional agents with persistent memory or state, FRANZ's only continuity comes from
+the story text visible on screen. Each cycle, FRANZ:
+  1. Captures a screenshot (downsampled to 512×288 for efficiency)
+  2. Observes the screen through a vision-language model (qwen3-vl-2b-instruct)
+  3. Rewrites its narrative based on what it perceives
+  4. Updates the HUD window with the new story
+
+The narrative IS the memory. The story IS the agent. There is no hidden state, no database,
+no conversation history beyond what appears in the HUD window within the screenshot.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STATELESS INTELLIGENCE
+
+FRANZ operates in two modes:
+
+• OBSERVATION MODE (default)
+  Calmly watches the screen, continuously evolving its narrative with new details and thoughts.
+  Even when the screen appears static, FRANZ adds depth, poetry, and philosophical reflection.
+
+• ACTION MODE (triggered)
+  When FRANZ sees its name ("FRANZ") in on-screen text or receives a direct command,
+  it experiences urgency and immediately acts using its tool set.
+
+The trigger mechanism is elegant: since FRANZ can see its own HUD in screenshots, users can
+type commands directly into a text editor or terminal, and FRANZ will perceive and respond.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TOOL CAPABILITIES
+
+FRANZ manipulates the desktop through Windows API calls (no external dependencies):
+
+• observe       — Continue narrative with pure observation
+• click         — Single left-click at coordinates
+• right_click   — Open context menus
+• double_click  — Open files/folders or select text
+• drag          — Click-hold, move, release (for moving windows, drawing, selecting)
+• type          — Unicode text input
+• scroll        — Vertical scrolling (mouse wheel simulation)
+
+All coordinates use a normalized 0-1000 scale, automatically translated to actual screen resolution.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+PHILOSOPHICAL FOUNDATION
+
+FRANZ challenges conventional AI architecture:
+  - No RAG database retrieval
+  - No persistent conversation logs
+  - No hidden embeddings or vector stores
+  - Pure perception → narrative → action loop
+
+The agent's continuity emerges from the narrative itself, creating a form of "literary consciousness"
+where identity and memory exist only in the act of storytelling.
+
+This architecture is surprisingly robust. The narrative compression forces FRANZ to distill
+experience into essential meaning rather than accumulating raw data. Like human memory,
+it's lossy, poetic, and reconstructive.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TECHNICAL REQUIREMENTS
+
+• Python 3.11+ (for modern type hints)
+• Windows OS (uses win32 API via ctypes)
+• LM Studio or compatible OpenAI API server running qwen3-vl-2b-instruct
+• No pip packages required — pure standard library + Windows API
+
+The vision model runs locally, ensuring privacy and low latency.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+USAGE
+
+1. Start LM Studio with qwen3-vl-2b-instruct on localhost:1234
+2. Run: python franz.py
+3. Watch FRANZ's narrative HUD appear in the corner
+4. Type "FRANZ, open notepad" in any visible text field
+5. Observe as FRANZ perceives the command and acts
+
+Screenshots and narratives are saved to ./dump/run_TIMESTAMP/ for analysis.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+"The story is the thing. The story is always the thing."
+                                                    — FRANZ, observing its own code
+"""
 from __future__ import annotations
 
 import base64
@@ -33,9 +128,19 @@ If you see the name "FRANZ" in any visible on-screen text, or if someone on scre
 
 When such a trigger occurs (your name is mentioned or a direct instruction is given), you experience a surge of urgency and focus. Your narrative becomes more detailed and intense, and you must immediately carry out the required action using the appropriate tool.
 
+You have these capabilities:
+- observe: just watch and think
+- click: single left-click
+- right_click: open context menus
+- double_click: open files or select items
+- drag: move objects by clicking and dragging from one point to another
+- type: enter text
+- scroll: move pages up or down
+
 If no one is directly addressing you or giving a command, remain in observation mode. Continue calmly describing what you see and think, and keep expanding the story with your observations.
 
 Never skip writing the story. Every turn, provide a meaningful narrative update — never a short acknowledgment or empty output. The story must always continue and change."""
+
 TOOLS = [
     {"type": "function", "function": {
         "name": "observe",
@@ -46,23 +151,56 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "click",
-        "description": "Click and update the story",
+        "description": "Left-click at a position and update the story",
         "parameters": {"type": "object", "properties": {
-            "x": {"type": "number"}, "y": {"type": "number"}, "story": {"type": "string"}
+            "x": {"type": "number", "description": "X coordinate (0-1000)"},
+            "y": {"type": "number", "description": "Y coordinate (0-1000)"},
+            "story": {"type": "string", "description": "Your rewritten narrative"}
         }, "required": ["x", "y", "story"]}
     }},
     {"type": "function", "function": {
-        "name": "type",
-        "description": "Type and update the story",
+        "name": "right_click",
+        "description": "Right-click at a position to open context menu and update the story",
         "parameters": {"type": "object", "properties": {
-            "text": {"type": "string"}, "story": {"type": "string"}
+            "x": {"type": "number", "description": "X coordinate (0-1000)"},
+            "y": {"type": "number", "description": "Y coordinate (0-1000)"},
+            "story": {"type": "string", "description": "Your rewritten narrative"}
+        }, "required": ["x", "y", "story"]}
+    }},
+    {"type": "function", "function": {
+        "name": "double_click",
+        "description": "Double left-click at a position to open or select and update the story",
+        "parameters": {"type": "object", "properties": {
+            "x": {"type": "number", "description": "X coordinate (0-1000)"},
+            "y": {"type": "number", "description": "Y coordinate (0-1000)"},
+            "story": {"type": "string", "description": "Your rewritten narrative"}
+        }, "required": ["x", "y", "story"]}
+    }},
+    {"type": "function", "function": {
+        "name": "drag",
+        "description": "Drag from one position to another and update the story",
+        "parameters": {"type": "object", "properties": {
+            "x1": {"type": "number", "description": "Start X (0-1000)"},
+            "y1": {"type": "number", "description": "Start Y (0-1000)"},
+            "x2": {"type": "number", "description": "End X (0-1000)"},
+            "y2": {"type": "number", "description": "End Y (0-1000)"},
+            "story": {"type": "string", "description": "Your rewritten narrative"}
+        }, "required": ["x1", "y1", "x2", "y2", "story"]}
+    }},
+    {"type": "function", "function": {
+        "name": "type",
+        "description": "Type text and update the story",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "Text to type"},
+            "story": {"type": "string", "description": "Your rewritten narrative"}
         }, "required": ["text", "story"]}
     }},
     {"type": "function", "function": {
         "name": "scroll",
-        "description": "Scroll and update the story",
+        "description": "Scroll up or down and update the story",
         "parameters": {"type": "object", "properties": {
-            "dy": {"type": "number"}, "story": {"type": "string"}
+            "dy": {"type": "number", "description": "Scroll amount (positive=up, negative=down)"},
+            "story": {"type": "string", "description": "Your rewritten narrative"}
         }, "required": ["dy", "story"]}
     }}
 ]
@@ -91,6 +229,8 @@ MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
 MOUSEEVENTF_WHEEL = 0x0800
 
 KEYEVENTF_UNICODE = 0x0004
@@ -316,6 +456,124 @@ def mouse_click(x: int, y: int, conv: Coord) -> None:
     
     send_input([move_input, down_input, up_input])
 
+def mouse_right_click(x: int, y: int, conv: Coord) -> None:
+    """Right-click at the given screen coordinates."""
+    ax, ay = conv.to_win32(x, y)
+    
+    move_input = INPUT()
+    move_input.type = INPUT_MOUSE
+    move_input.union.mi = MOUSEINPUT(
+        dx=ax, dy=ay, mouseData=0,
+        dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+        time=0, dwExtraInfo=None
+    )
+    
+    down_input = INPUT()
+    down_input.type = INPUT_MOUSE
+    down_input.union.mi = MOUSEINPUT(
+        dx=0, dy=0, mouseData=0,
+        dwFlags=MOUSEEVENTF_RIGHTDOWN,
+        time=0, dwExtraInfo=None
+    )
+    
+    up_input = INPUT()
+    up_input.type = INPUT_MOUSE
+    up_input.union.mi = MOUSEINPUT(
+        dx=0, dy=0, mouseData=0,
+        dwFlags=MOUSEEVENTF_RIGHTUP,
+        time=0, dwExtraInfo=None
+    )
+    
+    send_input([move_input, down_input, up_input])
+
+def mouse_double_click(x: int, y: int, conv: Coord) -> None:
+    """Double left-click at the given screen coordinates."""
+    ax, ay = conv.to_win32(x, y)
+    
+    move_input = INPUT()
+    move_input.type = INPUT_MOUSE
+    move_input.union.mi = MOUSEINPUT(
+        dx=ax, dy=ay, mouseData=0,
+        dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+        time=0, dwExtraInfo=None
+    )
+    
+    down_input = INPUT()
+    down_input.type = INPUT_MOUSE
+    down_input.union.mi = MOUSEINPUT(
+        dx=0, dy=0, mouseData=0,
+        dwFlags=MOUSEEVENTF_LEFTDOWN,
+        time=0, dwExtraInfo=None
+    )
+    
+    up_input = INPUT()
+    up_input.type = INPUT_MOUSE
+    up_input.union.mi = MOUSEINPUT(
+        dx=0, dy=0, mouseData=0,
+        dwFlags=MOUSEEVENTF_LEFTUP,
+        time=0, dwExtraInfo=None
+    )
+    
+    # First click
+    send_input([move_input, down_input, up_input])
+    time.sleep(0.05)
+    # Second click
+    send_input([down_input, up_input])
+
+def mouse_drag(x1: int, y1: int, x2: int, y2: int, conv: Coord) -> None:
+    """Drag from (x1, y1) to (x2, y2) with smooth interpolation."""
+    ax1, ay1 = conv.to_win32(x1, y1)
+    ax2, ay2 = conv.to_win32(x2, y2)
+    
+    # Move to start position
+    move_start = INPUT()
+    move_start.type = INPUT_MOUSE
+    move_start.union.mi = MOUSEINPUT(
+        dx=ax1, dy=ay1, mouseData=0,
+        dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+        time=0, dwExtraInfo=None
+    )
+    
+    # Press left button
+    down_input = INPUT()
+    down_input.type = INPUT_MOUSE
+    down_input.union.mi = MOUSEINPUT(
+        dx=0, dy=0, mouseData=0,
+        dwFlags=MOUSEEVENTF_LEFTDOWN,
+        time=0, dwExtraInfo=None
+    )
+    
+    send_input([move_start, down_input])
+    time.sleep(0.05)
+    
+    # Interpolate movement for smooth drag (10 steps)
+    steps = 10
+    for i in range(1, steps + 1):
+        t = i / steps
+        ix = int(ax1 + (ax2 - ax1) * t)
+        iy = int(ay1 + (ay2 - ay1) * t)
+        
+        move_input = INPUT()
+        move_input.type = INPUT_MOUSE
+        move_input.union.mi = MOUSEINPUT(
+            dx=ix, dy=iy, mouseData=0,
+            dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+            time=0, dwExtraInfo=None
+        )
+        send_input([move_input])
+        time.sleep(0.01)
+    
+    # Release left button
+    up_input = INPUT()
+    up_input.type = INPUT_MOUSE
+    up_input.union.mi = MOUSEINPUT(
+        dx=0, dy=0, mouseData=0,
+        dwFlags=MOUSEEVENTF_LEFTUP,
+        time=0, dwExtraInfo=None
+    )
+    
+    send_input([up_input])
+
 def type_text(text: str) -> None:
     if not text:
         return
@@ -455,8 +713,8 @@ def call_vlm(png: bytes) -> tuple[str, dict[str, Any]]:
         ],
         "tools": TOOLS,
         "tool_choice": "required",
-        "temperature": 1.0,
-        "max_tokens": 300
+        "temperature": 2.0,
+        "max_tokens": 800
     }
     
     req = urllib.request.Request(
@@ -594,7 +852,6 @@ def main() -> None:
                 print(f"\n[{ts}] {step:03d} | {tool}")
                 print(f"{story}\n")
                 
-                # (Removed: if tool == "done": break)
                 current_story = story
                 hud.update(story)
                 
@@ -603,6 +860,19 @@ def main() -> None:
                 if tool == "click":
                     sx, sy = conv.to_screen(float(args["x"]), float(args["y"]))
                     mouse_click(sx, sy, conv)
+                    time.sleep(0.5)
+                elif tool == "right_click":
+                    sx, sy = conv.to_screen(float(args["x"]), float(args["y"]))
+                    mouse_right_click(sx, sy, conv)
+                    time.sleep(0.5)
+                elif tool == "double_click":
+                    sx, sy = conv.to_screen(float(args["x"]), float(args["y"]))
+                    mouse_double_click(sx, sy, conv)
+                    time.sleep(0.5)
+                elif tool == "drag":
+                    sx1, sy1 = conv.to_screen(float(args["x1"]), float(args["y1"]))
+                    sx2, sy2 = conv.to_screen(float(args["x2"]), float(args["y2"]))
+                    mouse_drag(sx1, sy1, sx2, sy2, conv)
                     time.sleep(0.5)
                 elif tool == "type":
                     type_text(str(args["text"]))

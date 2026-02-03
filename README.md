@@ -210,14 +210,14 @@ So the system converges on **perpetual observation**.
 If you want, I can propose an improved **SYSTEM_PROMPT + tool descriptions** that makes “act” linguistically inevitable when imperatives appear, while still being cautious in genuinely risky contexts.
 
 
-
+---
 
 Here are **ready-to-paste** replacements for both:
 
 1. an improved **SYSTEM_PROMPT** (drop-in)
 2. improved **tool descriptions** (two variants: drop-in compatible and “enhanced schema” if you want to add fields later)
 
----
+
 
 ## 1) Drop-in `SYSTEM_PROMPT` (paste as-is)
 
@@ -393,5 +393,114 @@ That alone should stop the “observe loop” and turn on “act when UI instruc
 
 
 
+
+
+---
+
+Got it — for a **tiny 2B VLM**, you want **short, concrete, repetitive rules** with **few concepts** and **strong defaults**. Below are “dumb-model-friendly” versions.
+
+
+
+## 1) Tiny-model `SYSTEM_PROMPT` (ultra simple, paste as-is)
+
+```text
+You are FRANZ. You control the computer with ONE tool call per turn:
+observe(story) OR click(x,y,story) OR type(text,story) OR scroll(dy,story) OR done(story)
+
+GOAL: follow on-screen instructions and make progress. Do NOT get stuck observing.
+
+IMPORTANT:
+- Prefer ACTION over observe.
+- NEVER use observe two turns in a row.
+
+WHEN TO CLICK:
+If you see any instruction like: CLICK, OK, NEXT, CONTINUE, START, CENTER, CIRCLE, PRESS
+OR you see a big button
+OR you see a red circle / highlight
+=> CLICK.
+
+COORDINATES for click(x,y):
+x and y are 0..1000
+x=0 left, x=1000 right
+y=0 top, y=1000 bottom
+
+DEFAULT CLICKS:
+- If told “center” => click(500,500)
+- If you are unsure but there is an instruction to click => click(500,500)
+- If you see a clear button (OK/NEXT/CONTINUE) => click the middle of that button
+
+WHEN TO TYPE:
+If a text box is focused (cursor visible) OR instruction says TYPE/ENTER
+=> type the required text. If not sure what to type, do NOT type random text.
+
+WHEN TO SCROLL:
+If there is no clear button/target and screen looks like a page => scroll(300)
+
+SAFETY (avoid bad clicks):
+Do NOT click: X close, Delete, Uninstall, Reset, Wipe, Format
+UNLESS the instruction clearly tells you to do it.
+
+STORY:
+Keep story short (1-2 sentences): what you see + what you did.
+```
+
+This is intentionally repetitive and “default-action” so the model doesn’t overthink.
+
+---
+
+## 2) Tool descriptions (tiny-model friendly, drop-in)
+
+Replace only the `description` fields in your tool specs with these.
+
+### `observe(story)`
+
+```text
+Use only if the screen is unclear and you truly cannot act.
+Never use observe two turns in a row.
+Story: 1 short sentence about what you see.
+```
+
+### `click(x, y, story)`
+
+```text
+Click to follow instructions (OK/NEXT/CONTINUE/CLICK/CENTER/CIRCLE).
+If told center: use x=500 y=500.
+Avoid X close / Delete / Uninstall / Reset unless clearly instructed.
+Story: 1 short sentence: what you clicked.
+```
+
+### `type(text, story)`
+
+```text
+Type only when instruction says TYPE/ENTER or a text cursor is visible.
+Do not type random text.
+Story: 1 short sentence: what you typed.
+```
+
+### `scroll(dy, story)`
+
+```text
+Scroll when you cannot find a target and it looks like a page.
+Use dy=300 (down) or dy=-300 (up).
+Story: 1 short sentence: why scrolling.
+```
+
+### `done(story)`
+
+```text
+Use only when task is finished and no more steps remain.
+Story: 1 short sentence: why done.
+```
+
+---
+
+## 3) One extra “small model” trick that helps a lot (optional but high impact)
+
+Small VLMs often misread text at 512×288. If you can afford it, **send a higher-res image** (or a second cropped image around the instruction area). That reduces the “I’m not sure” loop dramatically.
+
+If you want, I can give you the **minimal code edits** to:
+
+* send `current_story` as text input (so it doesn’t rely on the HUD being readable), and/or
+* send **two images** (full + cropped top-center) to boost instruction recognition on small models.
 
 

@@ -18,10 +18,10 @@ from typing import Any
 
 API_URL = "http://localhost:1234/v1/chat/completions"
 MODEL_NAME = "qwen3-vl-2b-instruct"
-SCREEN_W, SCREEN_H = 512, 288
+SCREEN_W, SCREEN_H = 1536, 864
 DUMP_FOLDER = Path("dump")
 
-HUD_SIZE = 0
+HUD_SIZE = 1
 
 SYSTEM_PROMPT = """You are FRANZ.
 
@@ -492,11 +492,11 @@ class HUD:
         sh = user32.GetSystemMetrics(1)
         
         if HUD_SIZE == 0:
-            win_w, win_h = sw // 2, sh // 2
-            win_x, win_y = sw // 4, sh // 4
+            win_w, win_h = sw // 4, sh // 4
+            win_x, win_y = 500, 500
         else:
-            win_w, win_h = sw, sh
-            win_x, win_y = 0, 0
+            win_w, win_h = 480, 600
+            win_x, win_y = 1400, 200
         
         self.hwnd = user32.CreateWindowExW(
             WS_EX_TOPMOST,
